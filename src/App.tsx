@@ -270,10 +270,16 @@ export default function KostApp() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return data.filter(
-      (r) =>
-        r.nama.toLowerCase().includes(q) || r.kamar.toLowerCase().includes(q)
-    );
+    return data
+      .filter(
+        (r) =>
+          r.nama.toLowerCase().includes(q) || r.kamar.toLowerCase().includes(q)
+      )
+      .sort((a, b) => {
+        const numA = parseInt(a.kamar.replace(/\D/g, "")) || 0;
+        const numB = parseInt(b.kamar.replace(/\D/g, "")) || 0;
+        return numA - numB;
+      });
   }, [data, search]);
 
   function openAdd() {
