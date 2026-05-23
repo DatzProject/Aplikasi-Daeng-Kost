@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 
 // ── Paste URL Web App Apps Script Anda di sini ───────────
 const SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbxHi4TUkPb8vt3PeLOAhF2PZZF-WQ7OrMGbD67ReVuajpCcwtsrulKEcQu2Xnxa_cuVAA/exec";
+  "https://script.google.com/macros/s/AKfycbyWLJ3LAKlcPlHPmYsevMJwh2mU5SUmk3jwp0z7-0RTTiVHiVpEWi2tWGdLOfolWlQ9FA/exec";
 
 // ── Types ─────────────────────────────────────────────────
 interface Penghuni {
@@ -386,10 +386,19 @@ export default function KostApp() {
             ...form,
             ktp: ktpFileName,
             ktpFileId,
+            bulan: form.bulan,
           }
-        : { action: "add", ...form, ktp: ktpFileName, ktpFileId };
+        : {
+            action: "add",
+            ...form,
+            ktp: ktpFileName,
+            ktpFileId,
+            bulan: form.bulan,
+          };
 
       const json = await callScript(params);
+      console.log("DEBUG params:", params);
+      console.log("DEBUG response:", json);
       if (json.success) {
         notify(
           editRow
