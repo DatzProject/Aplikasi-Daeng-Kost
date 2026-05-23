@@ -179,6 +179,20 @@ const EMPTY_FORM: FormData = {
   bulan: "",
 };
 
+const DAFTAR_KAMAR = [
+  "B1",
+  "B2",
+  "B3",
+  "B4",
+  "B5",
+  "B6",
+  "B7",
+  "B8",
+  "B9",
+  "B10",
+  "B11",
+];
+
 function fmt(n: number | string): string {
   return "Rp " + Number(n).toLocaleString("id-ID");
 }
@@ -484,19 +498,7 @@ export default function KostApp() {
       type: "text",
       placeholder: "Nama lengkap",
     },
-    {
-      key: "kamar",
-      label: "Nomor Kamar *",
-      type: "text",
-      placeholder: "Mis: A01",
-    },
     { key: "tanggal", label: "Tanggal Masuk", type: "date", placeholder: "" },
-    {
-      key: "biaya",
-      label: "Biaya Kost (Rp)",
-      type: "number",
-      placeholder: "1500000",
-    },
     {
       key: "bulan",
       label: "Untuk Berapa Bulan",
@@ -693,6 +695,7 @@ export default function KostApp() {
               {editRow ? "Edit Data Penghuni" : "Tambah Penghuni Baru"}
             </h2>
             <div style={S.formGrid}>
+              {/* Nama Penghuni - dari fieldDefs */}
               {fieldDefs.map(({ key, label, type, placeholder }) => (
                 <div
                   key={key}
@@ -710,6 +713,45 @@ export default function KostApp() {
                   />
                 </div>
               ))}
+
+              {/* Dropdown Nomor Kamar */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <label style={S.label}>Nomor Kamar *</label>
+                <select
+                  style={S.input}
+                  value={form.kamar}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, kamar: e.target.value }))
+                  }
+                >
+                  <option value="">-- Pilih Kamar --</option>
+                  {DAFTAR_KAMAR.map((k) => (
+                    <option key={k} value={k}>
+                      {k}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Biaya Kost dengan format titik */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <label style={S.label}>Biaya Kost (Rp)</label>
+                <input
+                  style={S.input}
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="1.500.000"
+                  value={
+                    form.biaya ? Number(form.biaya).toLocaleString("id-ID") : ""
+                  }
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\./g, "");
+                    if (/^\d*$/.test(raw)) {
+                      setForm((f) => ({ ...f, biaya: raw }));
+                    }
+                  }}
+                />
+              </div>
 
               {/* Upload KTP — full width */}
               <div
