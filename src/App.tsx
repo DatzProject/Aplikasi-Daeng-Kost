@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 
 // ── Paste URL Web App Apps Script Anda di sini ───────────
 const SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbyWLJ3LAKlcPlHPmYsevMJwh2mU5SUmk3jwp0z7-0RTTiVHiVpEWi2tWGdLOfolWlQ9FA/exec";
+  "https://script.google.com/macros/s/AKfycbySI-TPjUJshZthxOohLZzTWP7KLXnM3lhs-3JuYX36kjBPxb26w-Pex5nwRLn0RQigZw/exec";
 
 // ── Types ─────────────────────────────────────────────────
 interface Penghuni {
@@ -17,6 +17,10 @@ interface Penghuni {
   biaya: number;
   barang: string;
   bulan: number;
+  bukti: string;
+  buktiFileId: string;
+  buktiUrl: string;
+  status: string;
 }
 
 interface FormData {
@@ -29,6 +33,10 @@ interface FormData {
   biaya: string;
   barang: string;
   bulan: string;
+  bukti: string;
+  buktiFileId: string;
+  buktiUrl: string;
+  status: string;
 }
 
 interface UploadResult {
@@ -177,6 +185,10 @@ const EMPTY_FORM: FormData = {
   biaya: "",
   barang: "",
   bulan: "",
+  bukti: "",
+  buktiFileId: "",
+  buktiUrl: "",
+  status: "Aktif",
 };
 
 const DAFTAR_KAMAR = [
@@ -243,6 +255,13 @@ export default function KostApp() {
   const [ktpStatus, setKtpStatus] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [buktiFile, setBuktiFile] = useState<File | null>(null);
+  const [buktiPreview, setBuktiPreview] = useState("");
+  const [buktiStatus, setBuktiStatus] = useState("");
+  const buktiInputRef = useRef<HTMLInputElement>(null);
+  const [activePage, setActivePage] = useState<"penghuni" | "riwayat">(
+    "penghuni"
+  );
 
   async function fetchData() {
     setLoading(true);
@@ -271,16 +290,23 @@ export default function KostApp() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return data
-      .filter(
-        (r) =>
-          r.nama.toLowerCase().includes(q) || r.kamar.toLowerCase().includes(q)
-      )
+      .filter((r) => {
+        if (activePage === "penghuni" && r.status === "Tidak Aktif")
+          return false;
+        return (
+          r.nama.toLowerCase().includes(q) ||
+          r.kamar.toLowerCase().includes(q) ||
+          r.tanggal.toLowerCase().includes(q)
+        );
+      })
       .sort((a, b) => {
         const numA = parseInt(a.kamar.replace(/\D/g, "")) || 0;
         const numB = parseInt(b.kamar.replace(/\D/g, "")) || 0;
-        return numA - numB;
+        if (numA !== numB) return numA - numB;
+        // kamar sama → urutkan tanggal terbaru di atas
+        return new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime();
       });
-  }, [data, search]);
+  }, [data, search, activePage]);
 
   function openAdd() {
     setEditRow(null);
@@ -301,8 +327,13 @@ export default function KostApp() {
       biaya: r.biaya ? String(r.biaya) : "",
       barang: r.barang || "",
       bulan: r.bulan ? String(r.bulan) : "",
+      bukti: r.bukti || "",
+      buktiFileId: r.buktiFileId || "",
+      buktiUrl: r.buktiUrl || "",
+      status: r.status || "Aktif",
     });
     resetKtp();
+    resetBukti();
     setModal(true);
   }
 
@@ -311,6 +342,7 @@ export default function KostApp() {
     setEditRow(null);
     setForm(EMPTY_FORM);
     resetKtp();
+    resetBukti();
   }
 
   function resetKtp() {
@@ -318,6 +350,13 @@ export default function KostApp() {
     setKtpPreview("");
     setKtpStatus("");
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function resetBukti() {
+    setBuktiFile(null);
+    setBuktiPreview("");
+    setBuktiStatus("");
+    if (buktiInputRef.current) buktiInputRef.current.value = "";
   }
 
   function notify(msg: string) {
@@ -367,6 +406,50 @@ export default function KostApp() {
     }
   }
 
+  async function handleBuktiChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!["image/jpeg", "image/jpg", "image/png"].includes(file.type)) {
+      setError("Hanya file JPG atau PNG yang diizinkan!");
+      return;
+    }
+    const maxKB = 100;
+    setBuktiStatus("Memproses...");
+    try {
+      let finalFile = file;
+      if (file.size > maxKB * 1024) {
+        setBuktiStatus(
+          `Mengompresi (${(file.size / 1024).toFixed(
+            0
+          )} KB → maks ${maxKB} KB)...`
+        );
+        finalFile = await compressImage(file, maxKB);
+        setBuktiStatus(
+          `✓ Dikompres: ${(file.size / 1024).toFixed(0)} KB → ${(
+            finalFile.size / 1024
+          ).toFixed(0)} KB`
+        );
+      } else {
+        setBuktiStatus(
+          `✓ Siap upload: ${(finalFile.size / 1024).toFixed(0)} KB`
+        );
+      }
+      setBuktiFile(finalFile);
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const result = ev.target?.result;
+        if (result && typeof result === "string") setBuktiPreview(result);
+      };
+      reader.readAsDataURL(finalFile);
+    } catch (err) {
+      setError(
+        "Gagal memproses gambar: " +
+          (err instanceof Error ? err.message : String(err))
+      );
+      setBuktiStatus("");
+    }
+  }
+
   async function handleSave() {
     if (!form.nama.trim() || !form.kamar.trim()) {
       setError("Nama dan Kamar wajib diisi!");
@@ -399,27 +482,96 @@ export default function KostApp() {
         }
       }
 
+      let buktiFileName = form.bukti;
+      let buktiFileId = form.buktiFileId;
+
+      if (buktiFile) {
+        setUploading(true);
+        setBuktiStatus("Mengupload ke Google Drive...");
+        try {
+          const res = await uploadKTP(buktiFile, buktiFile.name);
+          // uploadKTP bisa dipakai ulang karena logikanya sama
+          buktiFileName = res.fileName || "";
+          buktiFileId = res.fileId || "";
+          setBuktiStatus("✓ Upload berhasil!");
+        } catch (err) {
+          setError(
+            "Upload Bukti Pembayaran gagal: " +
+              (err instanceof Error ? err.message : String(err))
+          );
+          setLoading(false);
+          setUploading(false);
+          return;
+        } finally {
+          setUploading(false);
+        }
+      }
+
       const params = editRow
         ? {
-            action: "update",
-            rowIndex: editRow.rowIndex,
-            ...form,
+            action: "update" as const,
+            rowIndex: String(editRow.rowIndex),
+            nama: form.nama,
+            kamar: form.kamar,
+            tanggal: form.tanggal,
             ktp: ktpFileName,
-            ktpFileId,
+            ktpFileId: ktpFileId,
+            ktpUrl: form.ktpUrl,
+            biaya: form.biaya,
+            barang: form.barang,
             bulan: form.bulan,
+            bukti: buktiFileName,
+            buktiFileId: buktiFileId,
+            buktiUrl: form.buktiUrl,
+            status: form.status,
           }
         : {
-            action: "add",
-            ...form,
+            action: "add" as const,
+            rowIndex: "",
+            nama: form.nama,
+            kamar: form.kamar,
+            tanggal: form.tanggal,
             ktp: ktpFileName,
-            ktpFileId,
+            ktpFileId: ktpFileId,
+            ktpUrl: form.ktpUrl,
+            biaya: form.biaya,
+            barang: form.barang,
             bulan: form.bulan,
+            bukti: buktiFileName,
+            buktiFileId: buktiFileId,
+            buktiUrl: form.buktiUrl,
+            status: form.status,
           };
 
       const json = await callScript(params);
       console.log("DEBUG params:", params);
       console.log("DEBUG response:", json);
       if (json.success) {
+        // Jika tambah data baru (bukan edit), nonaktifkan data lama dengan kamar sama
+        if (!editRow) {
+          const dataKamarSama = data.filter((r) => r.kamar === form.kamar);
+          await Promise.all(
+            dataKamarSama.map((r) =>
+              callScript({
+                action: "update",
+                rowIndex: String(r.rowIndex),
+                nama: r.nama,
+                kamar: r.kamar,
+                tanggal: r.tanggal,
+                ktp: r.ktp,
+                ktpFileId: r.ktpFileId,
+                ktpUrl: r.ktpUrl,
+                biaya: String(r.biaya),
+                barang: r.barang,
+                bulan: String(r.bulan),
+                bukti: r.bukti,
+                buktiFileId: r.buktiFileId,
+                buktiUrl: r.buktiUrl,
+                status: "Tidak Aktif",
+              })
+            )
+          );
+        }
         notify(
           editRow
             ? "Data berhasil diperbarui!"
@@ -531,6 +683,28 @@ export default function KostApp() {
         </button>
       </div>
 
+      {/* Navigasi Tab */}
+      <div style={S.tabRow}>
+        <button
+          style={{
+            ...S.tabBtn,
+            ...(activePage === "penghuni" ? S.tabBtnActive : {}),
+          }}
+          onClick={() => setActivePage("penghuni")}
+        >
+          🏠 Data Penghuni Kost
+        </button>
+        <button
+          style={{
+            ...S.tabBtn,
+            ...(activePage === "riwayat" ? S.tabBtnActive : {}),
+          }}
+          onClick={() => setActivePage("riwayat")}
+        >
+          📋 Riwayat Transaksi
+        </button>
+      </div>
+
       {error && (
         <div style={S.alertError}>
           ⚠ {error}
@@ -541,48 +715,217 @@ export default function KostApp() {
       )}
       {success && <div style={S.alertSuccess}>✓ {success}</div>}
 
-      {/* Stats */}
-      <div style={S.statsGrid}>
-        <div style={S.stat}>
-          <div style={S.statLabel}>Total Penghuni</div>
-          <div style={S.statValue}>{stats.jumlah}</div>
-        </div>
-        <div style={S.stat}>
-          <div style={S.statLabel}>Kamar Terisi</div>
-          <div style={{ ...S.statValue, color: "#0F6E56" }}>{stats.kamar}</div>
-        </div>
-        <div style={S.stat}>
-          <div style={S.statLabel}>Total Pendapatan/bln</div>
-          <div style={S.statValue}>{fmt(stats.total)}</div>
-        </div>
-      </div>
+      {activePage === "penghuni" && (
+        <>
+          {/* Stats */}
+          <div style={S.statsGrid}>
+            <div style={S.stat}>
+              <div style={S.statLabel}>Total Penghuni</div>
+              <div style={S.statValue}>{stats.jumlah}</div>
+            </div>
+            <div style={S.stat}>
+              <div style={S.statLabel}>Kamar Terisi</div>
+              <div style={{ ...S.statValue, color: "#0F6E56" }}>
+                {stats.kamar}
+              </div>
+            </div>
+            <div style={S.stat}>
+              <div style={S.statLabel}>Total Pendapatan/bln</div>
+              <div style={S.statValue}>{fmt(stats.total)}</div>
+            </div>
+          </div>
 
-      {/* Tabel */}
-      <div style={S.card}>
-        <div style={S.searchRow}>
-          <input
-            style={{ ...S.input, flex: 1 }}
-            placeholder="Cari nama atau nomor kamar..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <button style={S.btn} onClick={fetchData} disabled={loading}>
-            {loading ? "⏳" : "↻ Refresh"}
-          </button>
-          <button style={S.btn} onClick={exportCSV}>
-            ↓ Export CSV
-          </button>
-        </div>
-        {loading && (
-          <p style={{ color: "#888", textAlign: "center", padding: "1rem" }}>
-            Memuat data...
-          </p>
-        )}
-        <div style={{ overflowX: "auto" }}>
-          <table style={S.table}>
-            <thead>
-              <tr>
-                {[
+          {/* Tabel */}
+          <div style={S.card}>
+            <div style={S.searchRow}>
+              <input
+                style={{ ...S.input, flex: 1 }}
+                placeholder="Cari nama atau nomor kamar..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <button style={S.btn} onClick={fetchData} disabled={loading}>
+                {loading ? "⏳" : "↻ Refresh"}
+              </button>
+              <button style={S.btn} onClick={exportCSV}>
+                ↓ Export CSV
+              </button>
+            </div>
+            {loading && (
+              <p
+                style={{ color: "#888", textAlign: "center", padding: "1rem" }}
+              >
+                Memuat data...
+              </p>
+            )}
+            <div style={{ overflowX: "auto" }}>
+              <table style={S.table}>
+                <thead>
+                  <tr>
+                    {[
+                      "Nama Penghuni",
+                      "Kamar",
+                      "Tanggal Masuk",
+                      "File KTP",
+                      "Biaya Kost",
+                      "Barang Penghuni",
+                      "Bulan",
+                      "Jatuh Tempo",
+                      "Bukti Bayar",
+                      "Status",
+                      "Aksi",
+                    ].map((h) => (
+                      <th key={h} style={S.th}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={9}
+                        style={{
+                          textAlign: "center",
+                          padding: "2rem",
+                          color: "#888",
+                        }}
+                      >
+                        Tidak ada data penghuni
+                      </td>
+                    </tr>
+                  ) : (
+                    filtered.map((row, i) => (
+                      <tr key={i}>
+                        <td style={S.td}>{row.nama}</td>
+                        <td style={S.td}>
+                          <span style={S.badge}>{row.kamar}</span>
+                        </td>
+                        <td style={S.td}>{fmtDate(row.tanggal)}</td>
+                        <td style={S.td}>
+                          {row.ktpUrl ? (
+                            <a
+                              href={row.ktpUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ color: "#0F6E56", fontSize: 12 }}
+                            >
+                              🖼 {row.ktp || "Lihat KTP"}
+                            </a>
+                          ) : (
+                            <span style={{ color: "#aaa", fontSize: 12 }}>
+                              {row.ktp || "-"}
+                            </span>
+                          )}
+                        </td>
+                        <td style={S.td}>{row.biaya ? fmt(row.biaya) : "-"}</td>
+                        <td
+                          style={{
+                            ...S.td,
+                            maxWidth: 140,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {row.barang || "-"}
+                        </td>
+                        <td style={S.td}>{row.bulan || "-"}</td>
+                        <td
+                          style={{
+                            ...S.td,
+                            color: warnaJatuhTempo(row.tanggal, row.bulan),
+                            fontWeight: 500,
+                          }}
+                        >
+                          {hitungJatuhTempo(row.tanggal, row.bulan)}
+                        </td>
+                        <td style={S.td}>
+                          {row.buktiUrl ? (
+                            <a
+                              href={row.buktiUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ color: "#0F6E56", fontSize: 12 }}
+                            >
+                              🧾 {row.bukti || "Lihat Bukti"}
+                            </a>
+                          ) : (
+                            <span style={{ color: "#aaa", fontSize: 12 }}>
+                              {row.bukti || "-"}
+                            </span>
+                          )}
+                        </td>
+                        <td style={S.td}>
+                          <span
+                            style={{
+                              background:
+                                row.status === "Tidak Aktif"
+                                  ? "#FCEBEB"
+                                  : "#E1F5EE",
+                              color:
+                                row.status === "Tidak Aktif"
+                                  ? "#A32D2D"
+                                  : "#0F6E56",
+                              fontSize: 11,
+                              padding: "2px 8px",
+                              borderRadius: 99,
+                            }}
+                          >
+                            {row.status || "Aktif"}
+                          </span>
+                        </td>
+                        <td style={S.td}>
+                          <button
+                            style={{
+                              ...S.btn,
+                              padding: "4px 10px",
+                              fontSize: 12,
+                              marginRight: 4,
+                            }}
+                            onClick={() => openEdit(row)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            style={{
+                              ...S.btn,
+                              padding: "4px 10px",
+                              fontSize: 12,
+                              color: "#A32D2D",
+                            }}
+                            onClick={() => handleDelete(row)}
+                          >
+                            Hapus
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Halaman Riwayat Transaksi */}
+      {activePage === "riwayat" && (
+        <div style={S.card}>
+          <div style={S.searchRow}>
+            <input
+              style={{ ...S.input, flex: 1 }}
+              placeholder="Cari nama atau nomor kamar..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <button style={S.btn} onClick={fetchData} disabled={loading}>
+              {loading ? "⏳" : "↻ Refresh"}
+            </button>
+            <button
+              style={S.btn}
+              onClick={() => {
+                const headers = [
                   "Nama Penghuni",
                   "Kamar",
                   "Tanggal Masuk",
@@ -591,104 +934,195 @@ export default function KostApp() {
                   "Barang Penghuni",
                   "Bulan",
                   "Jatuh Tempo",
-                  "Aksi",
-                ].map((h) => (
-                  <th key={h} style={S.th}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
+                  "Bukti Bayar",
+                  "Status",
+                ];
+                const rows = filtered.map((r) => [
+                  r.nama,
+                  r.kamar,
+                  r.tanggal,
+                  r.ktp,
+                  r.biaya,
+                  r.barang,
+                  r.bulan,
+                  hitungJatuhTempo(r.tanggal, r.bulan),
+                  r.buktiUrl ||
+                    (r.buktiFileId
+                      ? `https://drive.google.com/file/d/${r.buktiFileId}/view`
+                      : ""),
+                  r.status,
+                ]);
+                const csv = [headers, ...rows]
+                  .map((r) => r.map((c) => `"${c}"`).join(","))
+                  .join("\n");
+                const a = document.createElement("a");
+                a.href =
+                  "data:text/csv;charset=utf-8,\uFEFF" +
+                  encodeURIComponent(csv);
+                a.download = "riwayat_transaksi.csv";
+                a.click();
+              }}
+            >
+              ↓ Export CSV
+            </button>
+          </div>
+          {loading && (
+            <p style={{ color: "#888", textAlign: "center", padding: "1rem" }}>
+              Memuat data...
+            </p>
+          )}
+          <div style={{ overflowX: "auto" }}>
+            <table style={S.table}>
+              <thead>
                 <tr>
-                  <td
-                    colSpan={9}
-                    style={{
-                      textAlign: "center",
-                      padding: "2rem",
-                      color: "#888",
-                    }}
-                  >
-                    Tidak ada data penghuni
-                  </td>
+                  {[
+                    "Nama Penghuni",
+                    "Kamar",
+                    "Tanggal Masuk",
+                    "File KTP",
+                    "Biaya Kost",
+                    "Barang Penghuni",
+                    "Bulan",
+                    "Jatuh Tempo",
+                    "Bukti Bayar",
+                    "Status",
+                    "Aksi",
+                  ].map((h) => (
+                    <th key={h} style={S.th}>
+                      {h}
+                    </th>
+                  ))}
                 </tr>
-              ) : (
-                filtered.map((row, i) => (
-                  <tr key={i}>
-                    <td style={S.td}>{row.nama}</td>
-                    <td style={S.td}>
-                      <span style={S.badge}>{row.kamar}</span>
-                    </td>
-                    <td style={S.td}>{fmtDate(row.tanggal)}</td>
-                    <td style={S.td}>
-                      {row.ktpUrl ? (
-                        <a
-                          href={row.ktpUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{ color: "#0F6E56", fontSize: 12 }}
-                        >
-                          🖼 {row.ktp || "Lihat KTP"}
-                        </a>
-                      ) : (
-                        <span style={{ color: "#aaa", fontSize: 12 }}>
-                          {row.ktp || "-"}
-                        </span>
-                      )}
-                    </td>
-                    <td style={S.td}>{row.biaya ? fmt(row.biaya) : "-"}</td>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
                     <td
+                      colSpan={11}
                       style={{
-                        ...S.td,
-                        maxWidth: 140,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
+                        textAlign: "center",
+                        padding: "2rem",
+                        color: "#888",
                       }}
                     >
-                      {row.barang || "-"}
-                    </td>
-                    <td style={S.td}>{row.bulan || "-"}</td>
-                    <td
-                      style={{
-                        ...S.td,
-                        color: warnaJatuhTempo(row.tanggal, row.bulan),
-                        fontWeight: 500,
-                      }}
-                    >
-                      {hitungJatuhTempo(row.tanggal, row.bulan)}
-                    </td>
-                    <td style={S.td}>
-                      <button
-                        style={{
-                          ...S.btn,
-                          padding: "4px 10px",
-                          fontSize: 12,
-                          marginRight: 4,
-                        }}
-                        onClick={() => openEdit(row)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        style={{
-                          ...S.btn,
-                          padding: "4px 10px",
-                          fontSize: 12,
-                          color: "#A32D2D",
-                        }}
-                        onClick={() => handleDelete(row)}
-                      >
-                        Hapus
-                      </button>
+                      Tidak ada data
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  filtered.map((row, i) => (
+                    <tr key={i}>
+                      <td style={S.td}>{row.nama}</td>
+                      <td style={S.td}>
+                        <span style={S.badge}>{row.kamar}</span>
+                      </td>
+                      <td style={S.td}>{fmtDate(row.tanggal)}</td>
+                      <td style={S.td}>
+                        {row.ktpUrl ? (
+                          <a
+                            href={row.ktpUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: "#0F6E56", fontSize: 12 }}
+                          >
+                            🖼 {row.ktp || "Lihat KTP"}
+                          </a>
+                        ) : (
+                          <span style={{ color: "#aaa", fontSize: 12 }}>
+                            {row.ktp || "-"}
+                          </span>
+                        )}
+                      </td>
+                      <td style={S.td}>{row.biaya ? fmt(row.biaya) : "-"}</td>
+                      <td
+                        style={{
+                          ...S.td,
+                          maxWidth: 140,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {row.barang || "-"}
+                      </td>
+                      <td style={S.td}>{row.bulan || "-"}</td>
+                      <td
+                        style={{
+                          ...S.td,
+                          color: warnaJatuhTempo(row.tanggal, row.bulan),
+                          fontWeight: 500,
+                        }}
+                      >
+                        {hitungJatuhTempo(row.tanggal, row.bulan)}
+                      </td>
+                      <td style={S.td}>
+                        {row.buktiUrl ? (
+                          <a
+                            href={row.buktiUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: "#0F6E56", fontSize: 12 }}
+                          >
+                            🧾 {row.bukti || "Lihat Bukti"}
+                          </a>
+                        ) : (
+                          <span style={{ color: "#aaa", fontSize: 12 }}>
+                            {row.bukti || "-"}
+                          </span>
+                        )}
+                      </td>
+                      <td style={S.td}>
+                        <span
+                          style={{
+                            background:
+                              row.status === "Tidak Aktif"
+                                ? "#FCEBEB"
+                                : "#E1F5EE",
+                            color:
+                              row.status === "Tidak Aktif"
+                                ? "#A32D2D"
+                                : "#0F6E56",
+                            fontSize: 11,
+                            padding: "2px 8px",
+                            borderRadius: 99,
+                          }}
+                        >
+                          {row.status || "Aktif"}
+                        </span>
+                      </td>
+                      <td style={S.td}>
+                        <button
+                          style={{
+                            ...S.btn,
+                            padding: "4px 10px",
+                            fontSize: 12,
+                            marginRight: 4,
+                          }}
+                          onClick={() => {
+                            setActivePage("penghuni");
+                            openEdit(row);
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          style={{
+                            ...S.btn,
+                            padding: "4px 10px",
+                            fontSize: 12,
+                            color: "#A32D2D",
+                          }}
+                          onClick={() => handleDelete(row)}
+                        >
+                          Hapus
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Modal */}
       {modal && (
@@ -847,6 +1281,118 @@ export default function KostApp() {
                     </span>
                   </div>
                 )}
+              </div>
+
+              {/* Upload Bukti Pembayaran — full width */}
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                }}
+              >
+                <label style={S.label}>
+                  Bukti Pembayaran (JPG / PNG, maks 100 KB setelah kompresi)
+                </label>
+                <div
+                  style={S.uploadBox}
+                  onClick={() => buktiInputRef.current?.click()}
+                >
+                  {buktiPreview ? (
+                    <img
+                      src={buktiPreview}
+                      alt="Preview Bukti"
+                      style={{
+                        maxHeight: 120,
+                        maxWidth: "100%",
+                        borderRadius: 6,
+                        objectFit: "contain",
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        textAlign: "center",
+                        color: "#999",
+                        padding: "1rem 0",
+                      }}
+                    >
+                      <div style={{ fontSize: 28, marginBottom: 4 }}>🧾</div>
+                      <div style={{ fontSize: 13 }}>
+                        Klik untuk pilih bukti pembayaran
+                      </div>
+                      <div style={{ fontSize: 11, marginTop: 2 }}>
+                        JPG atau PNG
+                      </div>
+                    </div>
+                  )}
+                  <input
+                    ref={buktiInputRef}
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png"
+                    style={{ display: "none" }}
+                    onChange={handleBuktiChange}
+                  />
+                </div>
+                {buktiStatus && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: buktiStatus.startsWith("✓") ? "#0F6E56" : "#888",
+                      background: buktiStatus.startsWith("✓")
+                        ? "#E1F5EE"
+                        : "#f5f5f3",
+                      padding: "5px 10px",
+                      borderRadius: 6,
+                    }}
+                  >
+                    {buktiStatus}
+                  </div>
+                )}
+                {!buktiFile && form.bukti && (
+                  <div style={{ fontSize: 12, color: "#555" }}>
+                    File saat ini:{" "}
+                    <a
+                      href={
+                        form.buktiUrl ||
+                        (form.buktiFileId
+                          ? `https://drive.google.com/file/d/${form.buktiFileId}/view`
+                          : "#")
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: "#0F6E56" }}
+                    >
+                      🧾 {form.bukti}
+                    </a>
+                    <span style={{ color: "#aaa", marginLeft: 6 }}>
+                      (biarkan kosong untuk mempertahankan)
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Status — full width */}
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                }}
+              >
+                <label style={S.label}>Status</label>
+                <select
+                  style={S.input}
+                  value={form.status}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, status: e.target.value }))
+                  }
+                >
+                  <option value="Aktif">Aktif</option>
+                  <option value="Tidak Aktif">Tidak Aktif</option>
+                </select>
               </div>
 
               {/* Barang — full width */}
@@ -1039,6 +1585,30 @@ const S: Record<string, CSSProperties> = {
     overflowY: "auto",
   },
   formGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
+  tabRow: {
+    display: "flex",
+    gap: 4,
+    marginBottom: "1.5rem",
+    borderBottom: "1.5px solid #e5e5e3",
+    paddingBottom: 0,
+  },
+  tabBtn: {
+    padding: "8px 18px",
+    border: "none",
+    borderBottom: "2.5px solid transparent",
+    background: "none",
+    fontSize: 13,
+    cursor: "pointer",
+    color: "#888",
+    fontFamily: "sans-serif",
+    marginBottom: -1.5,
+    borderRadius: 0,
+  },
+  tabBtnActive: {
+    color: "#0F6E56",
+    borderBottom: "2.5px solid #1D9E75",
+    fontWeight: 500,
+  },
   uploadBox: {
     border: "1.5px dashed #ccc",
     borderRadius: 8,
