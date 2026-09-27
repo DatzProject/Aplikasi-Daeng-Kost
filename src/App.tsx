@@ -222,6 +222,14 @@ function fmtDate(d: string): string {
   }
 }
 
+function hitungJatuhTempoISO(tanggal: string, bulan: string | number): string {
+  if (!tanggal || !bulan) return "";
+  const d = new Date(tanggal);
+  if (isNaN(d.getTime())) return "";
+  d.setMonth(d.getMonth() + Number(bulan));
+  return d.toISOString().slice(0, 10);
+}
+
 function hitungJatuhTempo(tanggal: string, bulan: string | number): string {
   if (!tanggal || !bulan) return "-";
   const d = new Date(tanggal);
@@ -262,6 +270,7 @@ export default function KostApp() {
   const [activePage, setActivePage] = useState<"penghuni" | "riwayat">(
     "penghuni"
   );
+  const [isPerpanjang, setIsPerpanjang] = useState(false);
 
   async function fetchData() {
     setLoading(true);
@@ -310,6 +319,7 @@ export default function KostApp() {
 
   function openAdd() {
     setEditRow(null);
+    setIsPerpanjang(false);
     setForm(EMPTY_FORM);
     resetKtp();
     setModal(true);
@@ -317,6 +327,7 @@ export default function KostApp() {
 
   function openEdit(r: Penghuni) {
     setEditRow(r);
+    setIsPerpanjang(false);
     setForm({
       nama: r.nama || "",
       kamar: r.kamar || "",
@@ -337,8 +348,32 @@ export default function KostApp() {
     setModal(true);
   }
 
+  function openPerpanjang(r: Penghuni) {
+    setEditRow(null);
+    setIsPerpanjang(true);
+    setForm({
+      nama: r.nama || "",
+      kamar: r.kamar || "",
+      tanggal: hitungJatuhTempoISO(r.tanggal, r.bulan),
+      ktp: r.ktp || "",
+      ktpFileId: r.ktpFileId || "",
+      ktpUrl: r.ktpUrl || "",
+      biaya: r.biaya ? String(r.biaya) : "",
+      barang: r.barang || "",
+      bulan: "1",
+      bukti: "",
+      buktiFileId: "",
+      buktiUrl: "",
+      status: "Aktif",
+    });
+    resetKtp();
+    resetBukti();
+    setModal(true);
+  }
+
   function closeModal() {
     setModal(false);
+    setIsPerpanjang(false);
     setEditRow(null);
     setForm(EMPTY_FORM);
     resetKtp();
@@ -892,6 +927,19 @@ export default function KostApp() {
                               ...S.btn,
                               padding: "4px 10px",
                               fontSize: 12,
+                              marginRight: 4,
+                              color: "#0F6E56",
+                              borderColor: "#0F6E56",
+                            }}
+                            onClick={() => openPerpanjang(row)}
+                          >
+                            Perpanjang
+                          </button>
+                          <button
+                            style={{
+                              ...S.btn,
+                              padding: "4px 10px",
+                              fontSize: 12,
                               color: "#A32D2D",
                             }}
                             onClick={() => handleDelete(row)}
@@ -1132,7 +1180,11 @@ export default function KostApp() {
         >
           <div style={S.modal}>
             <h2 style={{ fontSize: 16, fontWeight: 500, marginBottom: "1rem" }}>
-              {editRow ? "Edit Data Penghuni" : "Tambah Penghuni Baru"}
+              {editRow
+                ? "Edit Data Penghuni"
+                : isPerpanjang
+                ? "Perpanjang Masa Sewa"
+                : "Tambah Penghuni Baru"}
             </h2>
             <div style={S.formGrid}>
               {/* Nama Penghuni - dari fieldDefs */}
