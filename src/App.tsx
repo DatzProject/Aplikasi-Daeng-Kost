@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 
 // ── Paste URL Web App Apps Script Anda di sini ───────────
 const SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbySI-TPjUJshZthxOohLZzTWP7KLXnM3lhs-3JuYX36kjBPxb26w-Pex5nwRLn0RQigZw/exec";
+  "https://script.google.com/macros/s/AKfycbxMA9jZQCpfqUlY2zgoG4E6ixyzghVOYun72Na9LO4BHrQO1uEYrVS03WrWEOYTR3dqxQ/exec";
 
 // ── Types ─────────────────────────────────────────────────
 interface Penghuni {
